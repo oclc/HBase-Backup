@@ -23,11 +23,11 @@ The code was tested with the following components.
 
 When the command above finishes running, it will output the path of the directory containing the backup copy:
 
-`12/04/16 15:51:42 INFO backup.Backup: Backup located at: hdfs://finddev07.dev.oclc.org:29318/user/espinozca/backup/bak-20120416.155126.421-20120416.155142.956`
+`12/04/16 15:51:42 INFO backup.Backup: Backup located at: hdfs://localhost:29318/user/espinozca/backup/bak-20120416.155126.421-20120416.155142.956`
 
 Notice that backup directory name contains the start and end date of the backup. You can use that path as input into the import tool:
 
-`hadoop jar HBase-Backup-1.0.4-SNAPSHOT-job.jar org.oclc.firefly.hadoop.backup.Import -i hdfs://finddev07.dev.oclc.org:29318/user/espinozca/backup/bak-20120416.155126.421-20120416.155142.956`
+`hadoop jar HBase-Backup-1.0.4-SNAPSHOT-job.jar org.oclc.firefly.hadoop.backup.Import -i hdfs://localhost:29318/user/espinozca/backup/bak-20120416.155126.421-20120416.155142.956`
 
 To get a list of the arguments these tools support, run them with the -h argument
 
