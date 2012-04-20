@@ -10,8 +10,8 @@ Utility to backup and restore HBase tables. Developed at [OCLC](http://www.oclc.
 
 The code was tested with the following components.
 
-HBase 0.92.1
-Hadoop 0.20.2-cdh3u3
+* HBase 0.92.1
+* Hadoop 0.20.2-cdh3u3
 
 ## Building ##
 
