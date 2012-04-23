@@ -127,6 +127,9 @@ public class Backup {
     
     /** A list of all the regions that have been copied */
     private List<HRegionInfo> copiedRegions = new ArrayList<HRegionInfo>();
+    
+    /** The backup directory Path */
+    private Path backupDirectoryPath = null;
 
     /**
      * Constructor
@@ -240,6 +243,16 @@ public class Backup {
         LOG.info("--------------------------------------------------");
         
         boolean success = backup.doMajorCopy(tables, tries);
+
+        LOG.info("--------------------------------------------------");
+        if (success) {
+            LOG.info("Backup located at: " + backup.getBackupDirectoryPath());
+            LOG.info("Backup complete");
+        } else {
+            LOG.info("Files located at: " + backup.getBackupDirectoryPath());
+            LOG.info("Backup failed");
+        }
+
         System.exit(success ? 0 : -1);
     }
 
@@ -281,8 +294,8 @@ public class Backup {
         }
 
         // Make sure we write to a directory that does not exist
-        Path dstPath = createBackupDirectory(getCurrentDateString());
-        LOG.info("Starting backup path: " + dstPath);
+        backupDirectoryPath = createBackupDirectory(getCurrentDateString());
+        LOG.info("Starting backup path: " + backupDirectoryPath);
         
         // Copy the .tableinfo files for the tables we are extracting
         // These files are not copied by the MR job as it only focuses on regions
@@ -290,7 +303,7 @@ public class Backup {
         for (FileStatus file : tableInfoFiles) {
             Path srcFilePath = file.getPath();
             Path relPath = new Path(BackupUtils.getFsRelativePath(srcFs, srcFilePath));
-            Path dstFilePath = new Path(dstPath.toString() + relPath.toString());
+            Path dstFilePath = new Path(backupDirectoryPath.toString() + relPath.toString());
             BackupUtils.copy(srcFs, srcFilePath, dstFs, dstFilePath, buffer, username, replication);
         }
         
@@ -307,7 +320,7 @@ public class Backup {
 
                 // Generate a list of mapper input files and create job
                 List<Path> sourceFiles = createMapperInputSequenceFiles(mapperInput, getNumMapTasks(), srcFs, tries);
-                Job job = createMRJob(srcConf, dstConf, sourceFiles, dstPath, tries);
+                Job job = createMRJob(srcConf, dstConf, sourceFiles, backupDirectoryPath, tries);
 
                 LOG.info(job.getJobName());
                 LOG.info("--------------------------------------------------");
@@ -338,21 +351,16 @@ public class Backup {
                         
                         if (mapperInput.size() == 0) {
                             ret = true;
-                            dstPath = appendEndTime(dstPath);
+                            backupDirectoryPath = appendEndTime(backupDirectoryPath);
 
-                            LOG.warn("No regions left to copy. Please inspect backup manually for errors");
-                            LOG.info("--------------------------------------------------");
-                            LOG.info("Backup located at: " + dstPath);
-                            LOG.info("MR job completed, but expected to copy more regions");
+                            LOG.warn("No regions left to copy, but expected to copy more. "
+                                + "Please inspect logs/files manually for errors");
                         }
                     } else {
                         ret = true;
                         
                         addCopiedRegions(mapperInput, null);
-                        dstPath = appendEndTime(dstPath);
-                        
-                        LOG.info("--------------------------------------------------");
-                        LOG.info("Backup located at: " + dstPath);
+                        backupDirectoryPath = appendEndTime(backupDirectoryPath);
                         LOG.info("MR job finished successfully");
                     }
                 } else {
@@ -379,7 +387,7 @@ public class Backup {
             
             if (replication != finalReplication) {
                 FsShell shell = new FsShell(dstConf);
-                String[] repArgs = { "-setrep", "-R", "-w", "" + finalReplication, dstPath.toString() };
+                String[] repArgs = { "-setrep", "-R", "-w", "" + finalReplication, backupDirectoryPath.toString() };
                 
                 try {
                     LOG.info("Setting final replication factor of backup files to " + finalReplication);
@@ -387,14 +395,7 @@ public class Backup {
                 } catch (Exception e) {
                     LOG.warn("Could not set replication factor of backup files to " + finalReplication);
                 }
-                
-                LOG.info("--------------------------------------------------");
-                LOG.info("Backup located at " + dstPath);
             }
-            
-            LOG.info("Backup complete");
-        } else {
-            LOG.error("Job failed");
         }
         
         return ret;
@@ -561,7 +562,7 @@ public class Backup {
             for (HRegionInfo copiedRegion : copiedRegions) {
                 if (r.isDaughterOf(copiedRegion)) {
                     LOG.info("Daughter region : " + r.getHRegionInfo());
-                    LOG.info("         Parent : " + copiedRegion);
+                    LOG.info("         parent : " + copiedRegion);
                     
                     regionsInMeta.remove(i);
                     --i;
@@ -987,6 +988,14 @@ public class Backup {
     }
     
     /**
+     * Get the backup directory path
+     * @return the backup directory path
+     */
+    public Path getBackupDirectoryPath() {
+        return this.backupDirectoryPath;
+    }
+    
+    /**
      * Set the name of user to run as
      * @param username the username to set
      * @throws IllegalArgumentException If username is null or empty
@@ -1017,7 +1026,7 @@ public class Backup {
      * @param finalReplication The final replication value.
      * @throws IllegalArgumentException Thrown if value is less than 0
      */
-    private void setFinalReplication(int finalReplication) throws IllegalArgumentException {
+    public void setFinalReplication(int finalReplication) throws IllegalArgumentException {
         if (finalReplication < 0) {
             throw new IllegalArgumentException("Final replication must be non-negative");
         } else if (finalReplication > 0) {
@@ -1031,7 +1040,7 @@ public class Backup {
      * Get the final replication factor
      * @return The final replication factor
      */
-    private int getFinalReplication() {
+    public int getFinalReplication() {
         return this.finalReplication;
     }
     
@@ -1060,7 +1069,7 @@ public class Backup {
      * Get the backup storage directory
      * @return the backup storage directory
      */
-    private String getBackupStoreDirectory() {
+    public String getBackupStoreDirectory() {
         String ret = BACKUP_STORE_DIR;
         String user = getUsername();
         

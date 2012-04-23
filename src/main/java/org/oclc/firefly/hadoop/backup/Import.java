@@ -429,6 +429,19 @@ public class Import {
                     FSDataInputStream regionInfoIn = fs.open(regionInfoPath);
                     HRegionInfo hRegionInfo = new HRegionInfo();
                     hRegionInfo.readFields(regionInfoIn);
+                    
+                    if (hRegionInfo.isOffline()) {
+                        LOG.warn("Offline region: " + hRegionInfo);
+                        LOG.warn("Set offline to false");
+                        hRegionInfo.setOffline(false);
+                    }
+                    
+                    if (hRegionInfo.isSplit()) {
+                        LOG.warn("Split region: " + hRegionInfo);
+                        LOG.warn("Set split to false");
+                        hRegionInfo.setSplit(false);
+                    }
+                    
                     regionInfoIn.close();
                     regionInfoList.add(hRegionInfo);
                 } catch (Exception e) {
@@ -549,7 +562,7 @@ public class Import {
      * Get whether to retain the original copy or not
      * @return true if we keep the orignal, or false otherwise
      */
-    private boolean getRetainOriginal() {
+    public boolean getRetainOriginal() {
         return this.retainOriginal;
     }
     
