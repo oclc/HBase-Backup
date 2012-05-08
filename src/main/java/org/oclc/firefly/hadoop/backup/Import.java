@@ -265,7 +265,7 @@ public class Import {
         for (int i = 0; i < files.length; i++) {
             String tableName = files[i].getPath().getName();
             Path tableDirPath = new Path(backupDirPath, tableName);
-            if (isValidTable(tableDirPath, conf)) {
+            if (isValidTable(tableDirPath)) {
                 LOG.debug("Found table: " + tableName);
                 tableNames.add(tableName);
             } else {
@@ -313,7 +313,7 @@ public class Import {
         for (String tableName : tables) {
             LOG.info(". " + tableName);
             
-            boolean imported = importTable(backupDirPath, tableName, conf);
+            boolean imported = importTable(backupDirPath, tableName);
             if (!imported) {
                 LOG.error("Table not imported");
                 numFailedImports++;
@@ -333,7 +333,7 @@ public class Import {
     private void doChecks(String[] tables) throws TableNotFoundException, TableExistsException, IOException {
         for (String tableName : tables) {
             // Cannot overwrite an existing table. Let user deal with it.
-            if (tableExists(tableName, conf)) {
+            if (tableExists(tableName)) {
                 LOG.error(". " + tableName + ": Table already exists.");
                 throw new TableExistsException(tableName + ": Table already exists.");
             }
@@ -347,16 +347,14 @@ public class Import {
     }
 
     /**
-     * Do import table
+     * Do import/restore of table
      * @param backupDirPath The path to the backup directory
      * @param tableName The name of the table to import
-     * @param conf The configuration
      * @return True iff import was successful.
      * @throws IOException If failed to read from file system
      */
-    public boolean importTable(Path backupDirPath, String tableName, Configuration conf) throws IOException {
+    public boolean importTable(Path backupDirPath, String tableName) throws IOException {
         boolean ret = false;
-        FileSystem fs = FileSystem.get(conf);
         Path hbaseDirPath  = new Path(conf.get(HConstants.HBASE_DIR));
         Path hbaseTableDirPath  = new Path(hbaseDirPath + "/" + tableName);
         Path backupTableDirPath = new Path(backupDirPath + "/" + tableName);
@@ -365,14 +363,10 @@ public class Import {
         fs.rename(backupTableDirPath, hbaseTableDirPath);
 
         LOG.debug("Moved " + backupTableDirPath + " to " + hbaseTableDirPath);
-        LOG.debug("Fixing table descriptor");
-        
         HTableDescriptor htd = FSTableDescriptors.getTableDescriptor(fs, hbaseTableDirPath);
 
         if (htd != null) {
-            htd.setName(Bytes.toBytes(tableName));
-            FSTableDescriptors.createTableDescriptor(fs, hbaseDirPath, htd);
-            ret = addToMeta(hbaseTableDirPath, conf);
+            ret = addTableToMeta(hbaseTableDirPath);
         } else {
             LOG.error("Could not get HTableDescriptor from imported table (" + hbaseTableDirPath + ")");
         }
@@ -387,26 +381,23 @@ public class Import {
 
     /**
      * Add table regions to meta table
-     * @param tableDir the path to table directory
-     * @param conf The configuration
+     * @param tablePath the path to table directory
      * @return True iff successfully added table regions to meta
      * @throws IOException when failed to read from file system
      */
-    protected boolean addToMeta(Path tableDir, Configuration conf) throws IOException {
+    protected boolean addTableToMeta(Path tablePath) throws IOException {
         boolean ret = true;
-        FileSystem fs = FileSystem.get(conf);
-        HTable metaTable = new HTable(conf, HConstants.META_TABLE_NAME);
-        FileStatus[] files = fs.listStatus(tableDir);
+        HTable meta = new HTable(conf, HConstants.META_TABLE_NAME);
+        FileStatus[] files = fs.listStatus(tablePath);
         List<FileStatus> regions = new ArrayList<FileStatus>();
         List<HRegionInfo> regionInfoList = new ArrayList<HRegionInfo>();
         
         // Find region files
         for (FileStatus file : files) {
-            if (!file.isDir()) {
-                continue;
-            } else if (file.getPath().getName().compareTo(HConstants.HREGION_COMPACTIONDIR_NAME) == 0) {
-                continue;
-            } else if (file.getPath().getName().compareTo(".tmp") == 0) {
+            String regionName = file.getPath().getName();
+            
+            if (regionName.equals(HConstants.HREGION_COMPACTIONDIR_NAME)
+                || !file.isDir() || regionName.startsWith(".")) {
                 continue;
             } else {
                 regions.add(file);
@@ -418,24 +409,27 @@ public class Import {
             Path regionInfoPath = new Path(file.getPath(), HRegion.REGIONINFO_FILE);
             
             if (!fs.exists(regionInfoPath)) {
-                LOG.error("Missing .regioninfo file: " + regionInfoPath);
+                LOG.error("Missing .regioninfo: " + regionInfoPath);
                 ret = false;
                 break;
             } else {
                 // get region info file from region directory
-                LOG.debug("File: " + file.getPath());
+                LOG.debug("regioninfo: " + regionInfoPath);
                 
                 try {
                     FSDataInputStream regionInfoIn = fs.open(regionInfoPath);
                     HRegionInfo hRegionInfo = new HRegionInfo();
                     hRegionInfo.readFields(regionInfoIn);
                     
+                    // Regions are set offline when they are split, but still contain data until a compaction
+                    // If we successfully copied this region's data, then we try enabling it.
                     if (hRegionInfo.isOffline()) {
                         LOG.warn("Offline region: " + hRegionInfo);
                         LOG.warn("Set offline to false");
                         hRegionInfo.setOffline(false);
                     }
                     
+                    // In backup, if a region is split, then the data is copied from the parent region
                     if (hRegionInfo.isSplit()) {
                         LOG.warn("Split region: " + hRegionInfo);
                         LOG.warn("Set split to false");
@@ -455,11 +449,11 @@ public class Import {
         if (ret) {
             // If everything checks, add regions to meta
             for (HRegionInfo hRegionInfo : regionInfoList) {
-                Put put = new Put(hRegionInfo.getRegionName());
-                put.add(HConstants.CATALOG_FAMILY, HConstants.REGIONINFO_QUALIFIER, Writables.getBytes(hRegionInfo));
-                metaTable.put(put);
-    
-                LOG.debug("Assigning region: " + Bytes.toStringBinary(hRegionInfo.getRegionName()));
+                LOG.debug("Importing region: " + hRegionInfo);
+                
+                Put p = new Put(hRegionInfo.getRegionName());
+                p.add(HConstants.CATALOG_FAMILY, HConstants.REGIONINFO_QUALIFIER, Writables.getBytes(hRegionInfo));
+                meta.put(p);
                 hadmin.assign(hRegionInfo.getRegionName());
             }
         }
@@ -470,30 +464,26 @@ public class Import {
     /**
      * Checks that the table does not already exist in hbase
      * @param tableName The table name
-     * @param conf The configuration
      * @return True if the directory is a valid copy of a table. False otherwise
      * @throws IOException IO exception 
      */
-    public boolean tableExists(String tableName, Configuration conf) throws IOException {
-        FileSystem fs = FileSystem.get(conf);
+    public boolean tableExists(String tableName) throws IOException {
         Path tableDirPath = new Path(conf.get(HConstants.HBASE_DIR), tableName);
         return fs.exists(tableDirPath);
     }
     
     /**
      * Checks if .tableinfo exists for given table. Returns false for ROOT and META tables
-     * @param tabledir the table hdfs directory
-     * @param conf The configuration
+     * @param tablePath the table hdfs directory
      * @return true if exists
      * @throws IOException If failed to read from file system
      */
-    public boolean isValidTable(Path tabledir, Configuration conf) throws IOException {
+    public boolean isValidTable(Path tablePath) throws IOException {
         boolean ret = false;
-        String tableName = tabledir.getName();
+        String tableName = tablePath.getName();
 
         if (!tableName.equals(ROOT_TABLE_NAME) && !tableName.equals(META_TABLE_NAME)) {
-            FileSystem fs = FileSystem.get(conf);
-            FileStatus status = BackupUtils.getTableInfoPath(fs, tabledir);
+            FileStatus status = BackupUtils.getTableInfoPath(fs, tablePath);
             
             if (status != null) {
                 ret = fs.exists(status.getPath());

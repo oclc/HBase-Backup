@@ -125,6 +125,9 @@ public final class BackupUtils {
     
     /**
      * Return the trash path of a deleted file
+     * Borrowed this nice function from https://issues.apache.org/jira/browse/HBASE-5509
+     * Although, in the versions of HBase we tested 0.92.* HBase doesn't delete files to trash
+     * even when enabled, but leaving it here for now.
      * @param path The original path to the deleted file
      * @param user the hbase user
      * @param fs The filesystem where to look
