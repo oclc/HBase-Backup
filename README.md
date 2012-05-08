@@ -54,6 +54,7 @@ To get a list of the arguments these tools support, run them with the -h argumen
 * Backup to an external cluster
 * Verify backed up regions.
 * Backup and Import can be run as an application or used programmatically (The main classes is the best example)
+* Archive HLogs
 
 ## Future Enhancements ##
 * Restore a table using a different table name
