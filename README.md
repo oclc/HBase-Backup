@@ -17,11 +17,11 @@ The code was tested with the following components.
 
 This backup utility is based around [HBASE-4618](https://issues.apache.org/jira/browse/HBASE-4618). We took the features we liked from the documents and implemented some generic tools that would work for us. This package comes equipped with three utilities: a backup tool to get snapshots of HFiles, an import/restore tool, and a tool to frequently copy HLogs. There is a fourth tool we use, but did not develop it ourselves so we have not included it in the our package. It's WALPlayer, and it is described in [HBASE-5604](https://issues.apache.org/jira/browse/HBASE-5604). WALPlayer is in the 0.94.0RC version of HBase so we back ported the code to work with HBase 0.92.1, the current version we are using.
 
-* Backup copies snapshots of HFiles while being tolerant of several errors that may occur when copying files from HBase. It attempts to account for region splits and performs some basic verifications at the end of the backup.
+* Backup copies snapshots of HFiles while being tolerant of several errors that may occur while copying files from HBase. It attempts to account for region splits and performs some basic verifications at the end of the backup.
 * Import is used to restore the HFiles into a running HBase cluster.
-* LogCopier is basic program that watches the Write-Ahead-Log directories and archives HBase log files. These logs can then be replayed with a tool like WALPlayer (See the comment above)
+* LogCopier is a basic program that watches the Write-Ahead-Log directories and archives those files. These logs can then be replayed with a tool like WALPlayer (See the comment above).
 
-It is important to point out that these tools, like any other backup options in HBase at the moment, are relatively new. We are continually testing them and looking for any issues. We encourage people looking for backup solutions to try it out and send any feedback. To get more details about these tools, please take a look at the wiki page.
+It is important to point out that these tools, like any other HBase backup options at the moment, are relatively new. We are continually testing them and looking for any issues. We encourage people looking for backup solutions to try it out and send any feedback. To get more details about these tools, please take a look at the wiki page.
 
 ## Building ##
 
