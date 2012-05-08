@@ -617,6 +617,6 @@ public class Import {
     private static void printOptions() {
         HelpFormatter formatter = new HelpFormatter();
         String header = "Tool to import a previous backup into a live HDFS cluster";
-        formatter.printHelp("Backup", header, getOptions(), "", true);
+        formatter.printHelp("Import", header, getOptions(), "", true);
     }
 }

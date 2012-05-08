@@ -64,6 +64,9 @@ public final class BackupUtils {
     /** date format used in backup directories */
     public static final DateFormat BACKUP_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd.kkmmss.SSS", Locale.US);
     
+    /** date format used for log copier */
+    public static final DateFormat LOG_COPIER_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+    
     /**
      * Cannot instantiate
      */
