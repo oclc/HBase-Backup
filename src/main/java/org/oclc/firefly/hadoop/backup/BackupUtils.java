@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -62,10 +61,13 @@ public final class BackupUtils {
     public static final int ONE_MB_OVER_64KB = 16;
     
     /** date format used in backup directories */
-    public static final DateFormat BACKUP_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd.kkmmss.SSS", Locale.US);
+    public static final DateFormat BACKUP_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd.kkmmss.SSS");
+    
+    /** Pretty print date format */
+    public static final DateFormat PRETTY_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd kk:mm:ss Z");
     
     /** date format used for log copier */
-    public static final DateFormat LOG_COPIER_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+    public static final DateFormat LOG_COPIER_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
     
     /**
      * Cannot instantiate

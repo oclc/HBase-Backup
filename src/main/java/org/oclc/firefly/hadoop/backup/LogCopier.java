@@ -72,10 +72,10 @@ public class LogCopier {
     private boolean isRunning = false;
     
     /** Contains the last run's start date */
-    private Date runStartDate = null;
+    private long runStartTime = 0L;
     
     /** Contains the last run's end date */
-    private Date runEndDate = null;
+    private long runEndTime = 0L;
     
     /** the user name to run tasks as */
     private String username = System.getProperty("user.name");
@@ -401,17 +401,18 @@ public class LogCopier {
      * Mark the start time of the last run
      */
     private void startRunTimer() {
-        runStartDate = new Date();
-        runEndDate = null;
-        LOG.info("Starting run on " + runStartDate);
+        runStartTime = System.currentTimeMillis();
+        runEndTime = 0L;
+        LOG.info("Starting run on " + BackupUtils.PRETTY_DATE_FORMAT.format(new Date(runStartTime)));
     }
     
     /**
      * Mark the end time of the last run
      */
     private void endRunTimer() {
-        runEndDate = new Date();
-        LOG.info("Completed on " + runEndDate + " (" + getHMSString(getLastRunLength()) + ") Results: [ last: "
+        runEndTime = System.currentTimeMillis();
+        LOG.info("Completed on " + BackupUtils.PRETTY_DATE_FORMAT.format(new Date(runEndTime))
+            + " (" + getHMSString(getLastRunLength()) + ") Results: [ last: "
             + lastRunSuccess + "/" + lastRunFailed + " total: " + totalSuccess + "/" + totalFailed + " ]");
     }
     
@@ -420,7 +421,7 @@ public class LogCopier {
      * @return The number of milliseconds it took to complete the last run. 0 if last run hasn't completed
      */
     private long getLastRunLength() {
-        return (runStartDate == null || runEndDate == null) ? 0L : runEndDate.getTime() - runStartDate.getTime();
+        return (runStartTime == 0L || runEndTime == 0L) ? 0L : runEndTime - runStartTime;
     }
     
     /**
