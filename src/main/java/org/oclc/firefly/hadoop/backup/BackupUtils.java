@@ -16,6 +16,8 @@
 
 package org.oclc.firefly.hadoop.backup;
 
+import org.apache.hadoop.hbase.util.Bytes;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.text.DateFormat;
@@ -348,5 +350,41 @@ public final class BackupUtils {
         }
 
         return info;
+    }
+    
+    /**
+     * Returns true if the start and end key of this row's HRegionInfo object is within the
+     * range of the given HRegionInfo start and end key
+     * @param daughter The potential daughter region
+     * @param parent The region to check against
+     * @return True if this catalog row's region is a daughter region of given region. False otherwise 
+     */
+    public static boolean regionContains(HRegionInfo parent, HRegionInfo daughter) {
+        boolean ret = false;
+
+        if (Bytes.compareTo(parent.getTableName(), daughter.getTableName()) == 0) {
+            byte[] rangeStartKey = daughter.getStartKey();
+            byte[] rangeEndKey   = daughter.getEndKey();
+            
+            if (rangeStartKey.length > 0 && rangeEndKey.length == 0) {
+                // Special case because start and end keys can look the same if they are empty
+                // An empty key is naturally less than anything. So if an end key is empty, then it is mistaken
+                // as a really small value, rather than a really large value
+                ret = (Bytes.compareTo(parent.getEndKey(), rangeEndKey) == 0
+                    && Bytes.compareTo(rangeStartKey, parent.getStartKey()) >= 0);
+            } else {
+                // parent inclusively contains range of hRegionInfo
+                //ret = parent.containsRange(rangeStartKey, rangeEndKey);
+                byte[] startKey = parent.getStartKey();
+                byte[] endKey = parent.getEndKey();
+                
+                boolean firstKeyInRange = Bytes.compareTo(rangeStartKey, startKey) >= 0;
+                boolean lastKeyInRange =
+                    Bytes.compareTo(rangeEndKey, endKey) <= 0 || Bytes.equals(endKey, HConstants.EMPTY_BYTE_ARRAY);
+                ret = firstKeyInRange && lastKeyInRange;
+            }
+        }
+        
+        return ret;
     }
 }

@@ -130,6 +130,9 @@ public class Backup {
     
     /** The backup directory Path */
     private Path backupDirectoryPath = null;
+    
+    /** the directory to store backups */
+    private String storeDirectory = null;
 
     /**
      * Constructor
@@ -155,9 +158,10 @@ public class Backup {
         int finalReplication = 0;
         int numMaps = 2;
         int tries = 0;
-        String dst = null;
         String tbl = null;
+        String dest = null;
         String user = System.getProperty("user.name");
+        Path destPath = null;
         CommandLineParser parser = new PosixParser();
         CommandLine cmdline = null;
         
@@ -174,7 +178,12 @@ public class Backup {
         for (Option option : cmdline.getOptions()) {
             switch (option.getId()) {
             case 'd':
-                dst = option.getValue();
+                dest = option.getValue();
+                destPath = new Path(dest);
+                if (!destPath.isAbsolute()) {
+                    throw new IllegalArgumentException("Destination path must be an absolute path");
+                }
+                
                 break;
             case 'm':
                 numMaps = Integer.parseInt(option.getValue());
@@ -221,8 +230,22 @@ public class Backup {
         Configuration dstConf = HBaseConfiguration.create();
         
         // This allows us to copy to a separate HDFS instance
-        if (dst != null) {
-            dstConf.set("fs.default.name", dst);
+        String destDir = null;
+        if (dest != null) {
+            destDir = destPath.toUri().getPath();
+            String fsName = null;
+            
+            if (destDir != null && destDir.length() > 0) {
+                LOG.debug("destination dfs: " + dest.substring(0, dest.length() - destDir.length()));
+                fsName = dest.substring(0, dest.length() - destDir.length());
+            } else {
+                fsName = dest;
+                destDir = null;
+            }
+            
+            if (fsName != null && fsName.length() > 0) {
+                dstConf.set("fs.default.name", fsName);
+            }
         }
         
         Backup backup = new Backup(srcConf, dstConf);
@@ -230,10 +253,13 @@ public class Backup {
         backup.setFinalReplication(finalReplication);
         backup.setUsername(user);
         backup.setNumMapTasks(numMaps);
+        if (destDir != null) {
+            backup.setBackupStoreDirectory(destDir);
+        }
         
         LOG.info("HBase backup tool");
         LOG.info("--------------------------------------------------");
-        LOG.info("Destination fs     : " + dstConf.get("fs.default.name"));
+        //LOG.info("Destination fs     : " + dstConf.get("fs.default.name"));
         LOG.info("Initial replication: " + backup.getInitialReplication());
         LOG.info("Final replication  : " + backup.getFinalReplication());
         LOG.info("Number of attempts : " + ((tries == 0) ? "Until nothing left to copy" : tries));
@@ -544,6 +570,8 @@ public class Backup {
         // Get the most current list of regions in .META.
         List<CatalogRow> regionsInMeta  = getHBaseRegions(srcConf);
         
+        LOG.info("Calculating remaining regions");
+        
         // Remove those regions from regionsInMeta which are already in copiedRegions (should be most of them)
         // This steps retains only the regions which we have yet to copy
         for (int i = 0; i < regionsInMeta.size(); i++) {
@@ -560,9 +588,9 @@ public class Backup {
             CatalogRow r = regionsInMeta.get(i);
             
             for (HRegionInfo copiedRegion : copiedRegions) {
-                if (r.isDaughterOf(copiedRegion)) {
+                if (BackupUtils.regionContains(copiedRegion, r.getHRegionInfo())) {
                     LOG.info("Daughter region : " + r.getHRegionInfo());
-                    LOG.info("         parent : " + copiedRegion);
+                    LOG.info("  Copied parent : " + copiedRegion);
                     
                     regionsInMeta.remove(i);
                     --i;
@@ -603,6 +631,8 @@ public class Backup {
         FileStatus[] list = fs.listStatus(retryPath);
 
         if (list != null) {
+            LOG.info("Getting failed regions");
+            
             for (FileStatus file : list) {
                 Path filePath = file.getPath();
                 if (filePath.getName().startsWith("part-")) {
@@ -611,8 +641,16 @@ public class Backup {
                     SequenceFile.Reader reader = new SequenceFile.Reader(fs, filePath, conf);
                     while (reader.next(rserver)) {
                         HRegionInfo rinfo = new HRegionInfo();
+                        LOG.info(rinfo.toString());
+                        
                         reader.getCurrentValue(rinfo);
                         ret.add(Pair.newPair(rserver.toString(), rinfo));
+                    }
+                    
+                    try {
+                        reader.close();
+                    } catch (Exception e) {
+                        // Ignore error
                     }
                 }
             }
@@ -1070,14 +1108,32 @@ public class Backup {
      * @return the backup storage directory
      */
     public String getBackupStoreDirectory() {
-        String ret = BACKUP_STORE_DIR;
-        String user = getUsername();
+        String ret = this.storeDirectory;
         
-        if (user != null) {
-            ret = "/user/" + user + ret;
+        if (ret == null) {
+            ret = BACKUP_STORE_DIR;
+            String user = getUsername();
+            
+            if (user != null) {
+                ret = "/user/" + user + ret;
+            }
         }
         
         return dstFs.getUri().toString() + ret;
+    }
+    
+    /**
+     * Set the backup storage directory for backups
+     * @param storeDir Path to store directory
+     */
+    public void setBackupStoreDirectory(String storeDir) {
+        if (storeDir == null) {
+            throw new NullPointerException("Backup store directory is null");
+        } else if (storeDir.trim().length() == 0) {
+            throw new IllegalArgumentException("Invalid DFS path");
+        }
+
+        this.storeDirectory = storeDir;
     }
     
     /**
@@ -1147,9 +1203,9 @@ public class Backup {
             "The maximum number of times to attempt to copy regions. Default: 0 (Try until nothing left to copy)");
         Option numMaps = new Option("m", "mappers", true,
             "The number of mappers to run (The number of paraller copiers)");
-        Option dst = new Option("d", "dest-dfs", true,
-            "URI of HDFS to backup to. Default is to write to the source HDFS. Example "
-            + "hdfs://finddev07.dev.oclc.org:2020");
+        Option dst = new Option("d", "destUri", true,
+            "Destination URI. Must be an absolute path. Default is /user/<username>/backup. Example "
+            + "hdfs://example.com:2020/foo/bar or /foo/bar");
         Option usr = new Option("u", "user", true,
             "The hbase user to use. Default is current user logged in");
         Option tbl = new Option("t", "tables", true,

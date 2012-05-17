@@ -150,33 +150,6 @@ class CatalogRow {
     public HRegionInfo getSplitB() {
         return splitB;
     }
-
-    /**
-     * Returns true if the start and end key of this row's HRegionInfo object is within the
-     * range of the given HRegionInfo start and end key
-     * @param parent The region to check against
-     * @return True if this catalog row's region is a daughter region of given region. False otherwise 
-     */
-    public boolean isDaughterOf(HRegionInfo parent) {
-        boolean ret = false;
-
-        if (Bytes.compareTo(parent.getTableName(), hRegionInfo.getTableName()) == 0) {
-            byte[] rangeStartKey = hRegionInfo.getStartKey();
-            byte[] rangeEndKey   = hRegionInfo.getEndKey();
-            
-            if (rangeStartKey.length > 0 && rangeEndKey.length == 0) {
-                // Special case because start and end keys can look the same if they are empty
-                // An empty key is naturally less than anything. So if an end key is empty, then it is mistaken
-                // as a really small value, rather than a really large value
-                ret = (Bytes.compareTo(parent.getEndKey(), rangeEndKey) == 0
-                    && Bytes.compareTo(rangeStartKey, parent.getStartKey()) >= 0);
-            } else {
-                ret = parent.containsRange(rangeStartKey, rangeEndKey);
-            }
-        }
-        
-        return ret;
-    }
     
     @Override
     public String toString() {
