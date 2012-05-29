@@ -396,13 +396,17 @@ public class Backup {
                 
                 tries++;
             }
-        }
-
-        if (verifyCopiedRegions()) {
-            LOG.info("Verification passed succesfully");
-        } else {
-            ret = false;
-            LOG.info("Verification failed. Please inspect errors manually");
+            
+            if (ret) {
+                if (verifyCopiedRegions()) {
+                    LOG.info("Verification passed succesfully");
+                } else {
+                    ret = false;
+                    LOG.info("Verification failed. Please inspect errors manually");
+                }
+            } else {
+                LOG.info("No attempts left. Try setting -n to a higher value, or setting it to 0");
+            }
         }
         
         if (ret) {
@@ -641,9 +645,9 @@ public class Backup {
                     SequenceFile.Reader reader = new SequenceFile.Reader(fs, filePath, conf);
                     while (reader.next(rserver)) {
                         HRegionInfo rinfo = new HRegionInfo();
-                        LOG.info(rinfo.toString());
-                        
                         reader.getCurrentValue(rinfo);
+
+                        LOG.info(rinfo.toString());
                         ret.add(Pair.newPair(rserver.toString(), rinfo));
                     }
                     
